@@ -1,102 +1,150 @@
-import Image, { type ImageProps } from "next/image";
-import { Button } from "@repo/ui/button";
-import styles from "./page.module.css";
+"use client";
 
-type Props = Omit<ImageProps, "src"> & {
-  srcLight: string;
-  srcDark: string;
-};
+import { useEffect, useState, useCallback } from "react";
+import { fetchInvoices, checkApiHealth } from "../lib/api";
+import InvoiceTable from "../components/invoice-table";
+import { IInvoice, ISearchQuery } from "../lib/types";
+import Link from "next/link";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { toast } from "sonner";
+import { Upload, Search, RefreshCw, AlertCircle } from "lucide-react";
 
-const ThemeImage = (props: Props) => {
-  const { srcLight, srcDark, ...rest } = props;
+export default function HomePage() {
+  const [invoices, setInvoices] = useState<IInvoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pagination, setPagination] = useState<any>(null);
+  const [apiHealthy, setApiHealthy] = useState(true);
 
-  return (
-    <>
-      <Image {...rest} src={srcLight} className="imgLight" />
-      <Image {...rest} src={srcDark} className="imgDark" />
-    </>
-  );
-};
+  const loadInvoices = useCallback(async (searchParams?: ISearchQuery) => {
+    try {
+      setLoading(true);
+      const result = await fetchInvoices(searchParams);
+      setInvoices(result.invoices);
+      setPagination(result.pagination);
+      setApiHealthy(true);
+    } catch (error) {
+      console.error('Failed to fetch invoices:', error);
+      toast.error('Failed to load invoices. Please check if the API server is running.');
+      setApiHealthy(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <ThemeImage
-          className={styles.logo}
-          srcLight="turborepo-dark.svg"
-          srcDark="turborepo-light.svg"
-          alt="Turborepo logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>apps/web/app/page.tsx</code>
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    loadInvoices({ q: query || undefined, page: 1 });
+  }, [loadInvoices]);
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new/clone?demo-description=Learn+to+implement+a+monorepo+with+a+two+Next.js+sites+that+has+installed+three+local+packages.&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F4K8ZISWAzJ8X1504ca0zmC%2F0b21a1c6246add355e55816278ef54bc%2FBasic.png&demo-title=Monorepo+with+Turborepo&demo-url=https%3A%2F%2Fexamples-basic-web.vercel.sh%2F&from=templates&project-name=Monorepo+with+Turborepo&repository-name=monorepo-turborepo&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fturborepo%2Ftree%2Fmain%2Fexamples%2Fbasic&root-directory=apps%2Fdocs&skippable-integrations=1&teamSlug=vercel&utm_source=create-turbo"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://turborepo.com/docs?utm_source"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+  const handleRefresh = () => {
+    loadInvoices({ q: searchQuery || undefined });
+  };
+
+  const checkApiStatus = async () => {
+    try {
+      await checkApiHealth();
+      setApiHealthy(true);
+    } catch {
+      setApiHealthy(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInvoices();
+    checkApiStatus();
+  }, [loadInvoices]);
+
+  if (!apiHealthy) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold mb-2">API Connection Failed</h2>
+        <p className="text-muted-foreground mb-4">
+          Unable to connect to the API server. Please make sure the backend is running on http://localhost:4000
+        </p>
+        <div className="space-x-2">
+          <Button onClick={checkApiStatus}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry Connection
+          </Button>
+          <Link href="/upload">
+            <Button variant="outline">
+              <Upload className="h-4 w-4 mr-2" />
+              Upload PDF
+            </Button>
+          </Link>
         </div>
-        <Button appName="web" className={styles.secondary}>
-          Open alert
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Invoice Dashboard</h1>
+          <p className="text-muted-foreground">
+            Manage your PDF invoices with AI-powered data extraction
+          </p>
+        </div>
+        <Link href="/upload">
+          <Button className="w-full sm:w-auto">
+            <Upload className="h-4 w-4 mr-2" />
+            Upload PDF
+          </Button>
+        </Link>
+      </div>
+
+      {/* Search and Controls */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by vendor name or invoice number..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
         </Button>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com/templates?search=turborepo&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://turborepo.com?utm_source=create-turbo"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to turborepo.com →
-        </a>
-      </footer>
+      </div>
+
+      {/* Stats */}
+      {pagination && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-2xl font-bold">{pagination.total}</div>
+            <div className="text-sm text-muted-foreground">Total Invoices</div>
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-2xl font-bold">{pagination.page}</div>
+            <div className="text-sm text-muted-foreground">Current Page</div>
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-2xl font-bold">{pagination.pages}</div>
+            <div className="text-sm text-muted-foreground">Total Pages</div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Table */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+          <p>Loading invoices...</p>
+        </div>
+      ) : (
+        <InvoiceTable 
+          invoices={invoices} 
+          onInvoiceDeleted={() => loadInvoices({ q: searchQuery || undefined })} 
+        />
+      )}
     </div>
   );
 }
