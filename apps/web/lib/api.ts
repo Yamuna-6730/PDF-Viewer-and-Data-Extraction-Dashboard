@@ -105,9 +105,7 @@ export async function fetchInvoices(
 
 // Get single invoice
 export async function fetchInvoice(id: string): Promise<IInvoice> {
-  const response = await fetch(`${API_URL}/api/invoices/${id}`, {
-    credentials: 'include'
-  });
+  const response = await fetch(`${API_URL}/invoices/${id}`);
   return handleResponse<IInvoice>(response);
 }
 
@@ -140,9 +138,8 @@ export async function updateInvoice(
 
 // Delete invoice
 export async function deleteInvoice(id: string): Promise<void> {
-  const response = await fetch(`${API_URL}/api/invoices/${id}`, {
-    method: "DELETE",
-    credentials: 'include'
+  const response = await fetch(`${API_URL}/invoices/${id}`, {
+    method: "DELETE"
   });
   
   if (!response.ok) {
@@ -153,9 +150,7 @@ export async function deleteInvoice(id: string): Promise<void> {
 
 // Get file info
 export async function getFileInfo(fileId: string): Promise<any> {
-  const response = await fetch(`${API_URL}/api/upload/${fileId}`, {
-    credentials: 'include'
-  });
+  const response = await fetch(`${API_URL}/upload/${fileId}`);
   return handleResponse(response);
 }
 
@@ -176,9 +171,7 @@ export function getFileDownloadUrl(fileId: string): string {
 
 // Health check
 export async function checkApiHealth(): Promise<any> {
-  const response = await fetch(`${API_URL}/health`, {
-    credentials: 'include'
-  });
+  const response = await fetch(`${API_URL.replace('/api', '')}/health`);
   const data = await response.json();
   return data;
 }

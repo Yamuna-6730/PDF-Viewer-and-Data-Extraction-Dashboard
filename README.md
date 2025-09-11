@@ -2,7 +2,14 @@
 
 A comprehensive full-stack PDF review dashboard with AI-powered invoice data extraction, built with modern technologies and best practices.
 
-![Demo](https://img.shields.io/badge/demo-available-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![Node](https://img.shields.io/badge/node-%3E%3D18-green) ![TypeScript](https://img.shields.io/badge/typescript-5.9-blue)
+**Demo-Links:**
+[Demo API](https://invoice-api-pied.vercel.app/) 
+[Demo Web](https://invoice-web-six.vercel.app/)  
+
+----
+[![Node](https://img.shields.io/badge/node-%3E%3D18-green)](https://nodejs.org/) [![TypeScript](https://img.shields.io/badge/typescript-5.9-blue)](https://www.typescriptlang.org/)
+
+--- 
 
 ## 🚀 Features
 
@@ -253,13 +260,13 @@ npm run format       # Format code with Prettier
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## Support
 
 - **Issues**: [GitHub Issues](../../issues)
 - **Documentation**: Check `/apps/api/README.md` and `/DEPLOYMENT.md`
 - **Discussions**: [GitHub Discussions](../../discussions)
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **shadcn/ui** for the beautiful UI components
 - **Vercel** for excellent deployment platform
@@ -269,4 +276,4 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) file for 
 
 ---
 
-**Built with ❤️ for efficient invoice management**
+**Yamuna Latchipatruni - Author**
