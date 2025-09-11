@@ -20,9 +20,13 @@ export interface IVendor {
 }
 
 export interface ILineItem {
+  id?: string;
+  code?: string;
   description: string;
   unitPrice: number;
   quantity: number;
+  discount?: number;
+  vat?: number;
   total: number;
 }
 
@@ -44,6 +48,7 @@ export interface IInvoice {
   fileName: string;
   vendor: IVendor;
   invoice: IInvoiceData;
+  lineItems?: ILineItem[];
   createdAt: string;
   updatedAt?: string;
 }

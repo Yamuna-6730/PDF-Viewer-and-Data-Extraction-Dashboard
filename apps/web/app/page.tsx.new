@@ -1,0 +1,633 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { 
+  Download, 
+  ZoomIn, 
+  ZoomOut, 
+  Check, 
+  X, 
+  ChevronDown, 
+  ChevronUp,
+  AlertCircle,
+  FileText,
+  Loader2
+} from "lucide-react";
+import { Button } from "../components/ui/button";
+import { toast } from "sonner";
+import { 
+  uploadPdf, 
+  extractInvoice, 
+  fetchInvoices, 
+  fetchInvoice, 
+  updateInvoice,
+  deleteInvoice,
+  getFileDownloadUrl,
+  checkApiHealth
+} from "../lib/api";
+import type { IInvoice, IExtractResponse } from "../lib/types";
+
+// Mock data - replace with actual API calls
+const mockInvoice: IInvoice = {
+  _id: "1",
+  fileId: "file-123",
+  fileName: "INV-2023-001.pdf",
+  vendor: {
+    name: "Vendor Inc.",
+    address: "456 Vendor Ave, San Francisco, CA 94107",
+    taxId: "TAX-123456"
+  },
+  invoice: {
+    number: "INV-2023-001",
+    date: "2023-11-15",
+    currency: "USD",
+    subtotal: 1800.00,
+    taxPercent: 20,
+    total: 2160.00,
+    poNumber: "PO-2023-456",
+    poDate: "2023-11-15",
+    lineItems: [
+      {
+        id: "1",
+        code: "ITEM-001",
+        description: "Professional Services - Web Development",
+        quantity: 40,
+        unitPrice: 45.00,
+        discount: 0,
+        vat: 18,
+        total: 1800.00
+      }
+    ]
+  },
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
+export default function DocumentReviewPage() {
+  // State for the component
+  const [currentInvoice, setCurrentInvoice] = useState<IInvoice | null>(mockInvoice);
+  const [invoices, setInvoices] = useState<IInvoice[]>([]);
+  const [formData, setFormData] = useState<Partial<IInvoice>>({});
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isApiHealthy, setIsApiHealthy] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showLineItems, setShowLineItems] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Zoom controls
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.1, 2));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(0.5, prev - 0.1));
+  
+  // Toggle line items visibility
+  const toggleLineItems = () => setShowLineItems(!showLineItems);
+  
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  // Update form data when current invoice changes
+  const updateFormData = (invoice: IInvoice) => {
+    setFormData({
+      vendor: invoice.vendor,
+      invoice: {
+        ...invoice.invoice,
+        poNumber: invoice.invoice.poNumber || '',
+        poDate: invoice.invoice.poDate || ''
+      }
+    });
+  };
+
+  // Handle file drop
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      await handleFileUpload(files[0]);
+    }
+  };
+
+  // Handle file input change
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  // Handle file upload and extraction
+  const handleFileUpload = async (file: File) => {
+    if (!file.type.includes('pdf')) {
+      toast.error('Please upload a PDF file');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      // 1. Upload the file
+      const uploadResponse = await uploadPdf(file);
+      
+      // 2. Extract invoice data
+      const extractResponse: IExtractResponse = await extractInvoice(uploadResponse.fileId, 'gemini');
+      
+      // 3. Create a complete invoice object with required fields
+      const now = new Date().toISOString();
+      const invoiceData: IInvoice = {
+        ...extractResponse.extractedData,
+        fileId: uploadResponse.fileId,
+        fileName: file.name,
+        createdAt: now,
+        updatedAt: now
+      };
+      
+      setCurrentInvoice(invoiceData);
+      updateFormData(invoiceData);
+      toast.success('Invoice processed successfully');
+    } catch (error) {
+      console.error('Error processing file:', error);
+      toast.error('Failed to process invoice');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle approve action
+  const handleApprove = async () => {
+    if (!currentInvoice?._id) return;
+    
+    try {
+      setIsSubmitting(true);
+      const updatedInvoice = {
+        ...currentInvoice,
+        status: 'approved' as const
+      };
+      await updateInvoice(currentInvoice._id, updatedInvoice);
+      setCurrentInvoice(updatedInvoice);
+      toast.success('Document approved successfully');
+    } catch (error) {
+      console.error('Error approving document:', error);
+      toast.error('Failed to approve document');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle reject action
+  const handleReject = async () => {
+    if (!currentInvoice?._id) return;
+    
+    try {
+      setIsSubmitting(true);
+      const updatedInvoice = {
+        ...currentInvoice,
+        status: 'rejected' as const
+      };
+      await updateInvoice(currentInvoice._id, updatedInvoice);
+      setCurrentInvoice(updatedInvoice);
+      toast.success('Document rejected');
+    } catch (error) {
+      console.error('Error rejecting document:', error);
+      toast.error('Failed to reject document');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Load invoice data on component mount
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        setIsLoading(true);
+        // Check if we have an invoice ID in the URL
+        const params = new URLSearchParams(window.location.search);
+        const invoiceId = params.get('id');
+        
+        if (invoiceId) {
+          // Load specific invoice
+          const invoice = await fetchInvoice(invoiceId);
+          setCurrentInvoice(invoice);
+          updateFormData(invoice);
+        } else {
+          // Load most recent invoice or show upload interface
+          const { invoices: recentInvoices } = await fetchInvoices({ limit: 1 });
+          if (recentInvoices.length > 0) {
+            setCurrentInvoice(recentInvoices[0]);
+            updateFormData(recentInvoices[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading invoice:', error);
+        toast.error('Failed to load invoice data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadInitialData();
+  }, []);
+
+  // Handle search
+  const handleSearch = async (query: string) => {
+    try {
+      setIsLoading(true);
+      const { invoices: searchResults } = await fetchInvoices({ q: query });
+      setInvoices(searchResults);
+    } catch (error) {
+      console.error('Error searching invoices:', error);
+      toast.error('Failed to search invoices');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle delete invoice
+  const handleDeleteInvoice = async (id: string) => {
+    try {
+      await deleteInvoice(id);
+      setInvoices(prev => prev.filter(inv => inv._id !== id));
+      toast.success('Invoice deleted successfully');
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      toast.error('Failed to delete invoice');
+    }
+  };
+
+  // Check API health
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const health = await checkApiHealth();
+        setIsApiHealthy(health);
+      } catch (error) {
+        console.error('API health check failed:', error);
+        setIsApiHealthy(false);
+      }
+    };
+
+    checkHealth();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <span className="ml-2">Loading...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Left Panel - PDF Viewer */}
+          <div className="lg:w-1/2 bg-white rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-medium text-gray-900">Document Viewer</h2>
+              <div className="flex items-center space-x-2">
+                <Button variant="outline" size="sm" onClick={handleZoomOut} disabled={zoomLevel <= 0.5}>
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-500">{Math.round(zoomLevel * 100)}%</span>
+                <Button variant="outline" size="sm" onClick={handleZoomIn} disabled={zoomLevel >= 2}>
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                {currentInvoice && (
+                  <a
+                    href={getFileDownloadUrl(currentInvoice.fileId)}
+                    download={currentInvoice.fileName}
+                    className="ml-2"
+                  >
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-1" />
+                      Download
+                    </Button>
+                  </a>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 h-[600px] overflow-auto flex items-center justify-center bg-gray-100">
+              {currentInvoice ? (
+                <iframe
+                  src={currentInvoice ? getFileDownloadUrl(currentInvoice.fileId) : ''}
+                  className="w-full h-full border-0"
+                  style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center' }}
+                />
+              ) : (
+                <div 
+                  className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-center p-8 cursor-pointer"
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileText className="h-12 w-12 text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">Drag and drop a PDF file</h3>
+                  <p className="text-sm text-gray-500 mb-4">or click to browse files</p>
+                  <Button variant="outline">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Select File
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Panel - Document Details */}
+          <div className="lg:w-1/2 space-y-6">
+            {/* Document Info */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Document Information</h2>
+                  {currentInvoice && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Uploaded on {new Date(currentInvoice.createdAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex space-x-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Upload New
+                  </Button>
+                </div>
+              </div>
+
+              {currentInvoice ? (
+                <div className="space-y-6">
+                  {/* Document Status */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Status</p>
+                      <div className="flex items-center mt-1">
+                        <div className={`h-2 w-2 rounded-full ${
+                          currentInvoice.status === 'approved' ? 'bg-green-500' : 
+                          currentInvoice.status === 'rejected' ? 'bg-red-500' : 'bg-yellow-500'
+                        } mr-2`}></div>
+                        <span className="text-sm font-medium capitalize">
+                          {currentInvoice.status || 'pending review'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleReject}
+                        disabled={isSubmitting}
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Reject
+                      </Button>
+                      <Button 
+                        onClick={handleApprove}
+                        disabled={isSubmitting}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Document Details */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">Vendor</h3>
+                      <p className="text-sm text-gray-900">{currentInvoice.vendor.name}</p>
+                      {currentInvoice.vendor.taxId && (
+                        <p className="text-xs text-gray-500 mt-1">Tax ID: {currentInvoice.vendor.taxId}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">Invoice Number</h3>
+                        <p className="text-sm text-gray-900">{currentInvoice.invoice.number}</p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">Invoice Date</h3>
+                        <p className="text-sm text-gray-900">
+                          {new Date(currentInvoice.invoice.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">PO Number</h3>
+                        <p className="text-sm text-gray-900">
+                          {currentInvoice.invoice.poNumber || 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">PO Date</h3>
+                        <p className="text-sm text-gray-900">
+                          {currentInvoice.invoice.poDate 
+                            ? new Date(currentInvoice.invoice.poDate).toLocaleDateString() 
+                            : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Line Items Toggle */}
+                    <div className="pt-2">
+                      <button
+                        onClick={toggleLineItems}
+                        className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
+                      >
+                        {showLineItems ? (
+                          <>
+                            <ChevronUp className="h-4 w-4 mr-1" />
+                            Hide Line Items
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-1" />
+                            Show Line Items ({currentInvoice.invoice.lineItems.length})
+                          </>
+                        )}
+                      </button>
+
+                      {showLineItems && (
+                        <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Item
+                                </th>
+                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Qty
+                                </th>
+                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Price
+                                </th>
+                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Total
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {currentInvoice.invoice.lineItems.map((item, index) => (
+                                <tr key={index}>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                    <div className="font-medium">{item.description}</div>
+                                    {item.code && (
+                                      <div className="text-xs text-gray-500">{item.code}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                                    {item.quantity}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                                    {new Intl.NumberFormat('en-US', {
+                                      style: 'currency',
+                                      currency: currentInvoice.invoice.currency || 'USD'
+                                    }).format(item.unitPrice)}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 text-right">
+                                    {new Intl.NumberFormat('en-US', {
+                                      style: 'currency',
+                                      currency: currentInvoice.invoice.currency || 'USD'
+                                    }).format(item.total)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-gray-50">
+                              <tr>
+                                <th colSpan={3} className="px-4 py-3 text-right text-sm font-medium text-gray-500">
+                                  Subtotal
+                                </th>
+                                <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+                                  {new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: currentInvoice.invoice.currency || 'USD'
+                                  }).format(currentInvoice.invoice.subtotal || 0)}
+                                </td>
+                              </tr>
+                              {currentInvoice.invoice.taxPercent && currentInvoice.invoice.taxPercent > 0 && (
+                                <tr>
+                                  <th colSpan={3} className="px-4 py-3 text-right text-sm font-medium text-gray-500">
+                                    Tax ({currentInvoice.invoice.taxPercent}%)
+                                  </th>
+                                  <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+                                    {new Intl.NumberFormat('en-US', {
+                                      style: 'currency',
+                                      currency: currentInvoice.invoice.currency || 'USD'
+                                    }).format(
+                                      (currentInvoice.invoice.subtotal || 0) * (currentInvoice.invoice.taxPercent / 100)
+                                    )}
+                                  </td>
+                                </tr>
+                              )}
+                              <tr>
+                                <th colSpan={3} className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+                                  Total
+                                </th>
+                                <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                                  {new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: currentInvoice.invoice.currency || 'USD'
+                                  }).format(currentInvoice.invoice.total || 0)}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No document selected</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Upload a PDF to get started or select an existing document.
+                  </p>
+                  <div className="mt-6">
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <FileText className="-ml-1 mr-2 h-5 w-5" />
+                      Upload Document
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Recent Invoices */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Recent Invoices</h2>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {invoices.length > 0 ? (
+                  invoices.map((invoice) => (
+                    <div 
+                      key={invoice._id} 
+                      className="p-4 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
+                      onClick={() => {
+                        setCurrentInvoice(invoice);
+                        updateFormData(invoice);
+                      }}
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{invoice.vendor.name}</p>
+                        <p className="text-sm text-gray-500">{invoice.invoice.number}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">
+                          {new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: invoice.invoice.currency || 'USD'
+                          }).format(invoice.invoice.total || 0)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(invoice.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-sm text-gray-500">
+                    No recent invoices found
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        accept=".pdf"
+        className="hidden"
+      />
+    </div>
+  );
+}

@@ -127,14 +127,20 @@ export default function InvoiceViewerPage() {
   const updateLineItem = (index: number, field: keyof ILineItem, value: string | number) => {
     if (!invoice) return;
     const newLineItems = [...invoice.invoice.lineItems];
-    newLineItems[index] = {
-      ...newLineItems[index],
-      [field]: field === 'description' ? value : Number(value) || 0
-    };
+    const currentItem = newLineItems[index];
+    
+    if (!currentItem) return;
+    
+    // Update the specific field
+    if (field === 'description') {
+      currentItem[field] = value as string;
+    } else {
+      currentItem[field] = Number(value) || 0;
+    }
     
     // Recalculate total for the line item
     if (field === 'unitPrice' || field === 'quantity') {
-      newLineItems[index].total = newLineItems[index].unitPrice * newLineItems[index].quantity;
+      currentItem.total = currentItem.unitPrice * currentItem.quantity;
     }
     
     setInvoice({

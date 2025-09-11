@@ -144,18 +144,18 @@ class GeminiAIService implements IAIService {
       return {
         vendor: {
           name: 'Unknown Vendor',
-          address: null,
-          taxId: null
+          address: undefined,
+          taxId: undefined
         },
         invoice: {
           number: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
           date: new Date().toISOString().split('T')[0],
           currency: 'USD',
-          subtotal: null,
-          taxPercent: null,
-          total: null,
-          poNumber: null,
-          poDate: null,
+          subtotal: undefined,
+          taxPercent: undefined,
+          total: undefined,
+          poNumber: undefined,
+          poDate: undefined,
           lineItems: []
         }
       };
@@ -191,7 +191,7 @@ class GroqAIService implements IAIService {
             content: prompt,
           },
         ],
-        model: 'llama3-8b-8192', // or 'mixtral-8x7b-32768'
+        model: 'llama-3.1-8b-instant', // or 'mixtral-8x7b-32768'
         temperature: 0.1, // Low temperature for consistent extraction
         max_tokens: 2048,
       });
@@ -261,18 +261,18 @@ class GroqAIService implements IAIService {
       return {
         vendor: {
           name: 'Unknown Vendor',
-          address: null,
-          taxId: null
+          address: undefined,
+          taxId: undefined
         },
         invoice: {
           number: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
           date: new Date().toISOString().split('T')[0],
           currency: 'USD',
-          subtotal: null,
-          taxPercent: null,
-          total: null,
-          poNumber: null,
-          poDate: null,
+          subtotal: undefined,
+          taxPercent: undefined,
+          total: undefined,
+          poNumber: undefined,
+          poDate: undefined,
           lineItems: []
         }
       };

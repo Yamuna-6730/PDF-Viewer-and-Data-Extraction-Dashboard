@@ -3,8 +3,8 @@ import Joi from 'joi';
 // Vendor validation schema
 const vendorSchema = Joi.object({
   name: Joi.string().required().trim().max(200),
-  address: Joi.string().optional().trim().max(500),
-  taxId: Joi.string().optional().trim().max(50)
+  address: Joi.string().allow('').optional().trim().max(500),
+  taxId: Joi.string().allow('').optional().trim().max(50)
 });
 
 // Line item validation schema
@@ -19,12 +19,12 @@ const lineItemSchema = Joi.object({
 const invoiceDataSchema = Joi.object({
   number: Joi.string().required().trim().max(100),
   date: Joi.string().required().trim(),
-  currency: Joi.string().optional().trim().max(10).default('USD'),
+  currency: Joi.string().allow('').optional().trim().max(10).default('USD'),
   subtotal: Joi.number().optional().min(0),
   taxPercent: Joi.number().optional().min(0).max(100),
   total: Joi.number().optional().min(0),
-  poNumber: Joi.string().optional().trim().max(100),
-  poDate: Joi.string().optional().trim(),
+  poNumber: Joi.string().allow('').optional().trim().max(100),
+  poDate: Joi.string().allow('').optional().trim(),
   lineItems: Joi.array().items(lineItemSchema).default([])
 });
 

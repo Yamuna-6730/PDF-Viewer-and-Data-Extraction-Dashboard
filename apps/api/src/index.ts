@@ -3,10 +3,13 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import serverless from 'serverless-http';
 import database from './utils/database';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
 
 // Import routes
+import authRoutes from './routes/auth.routes';
 import uploadRoutes from './routes/upload.routes';
 import extractRoutes from './routes/extract.routes';
 import invoicesRoutes from './routes/invoices.routes';
@@ -17,42 +20,87 @@ dotenv.config();
 // Create Express app
 const app = express();
 const PORT = process.env.PORT || 4000;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001';
 
-// Security middleware
-app.use(helmet({
-  crossOriginEmbedderPolicy: false, // Allow embedding for PDF viewer
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"]
+// Database connection helper for serverless
+const ensureDatabaseConnection = async () => {
+  try {
+    await database.connect();
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    return false;
+  }
+};
+
+// Middleware to ensure database connection before API calls
+const databaseMiddleware = async (_req: any, res: any, next: any) => {
+  if (!database.isConnectedToDatabase()) {
+    console.log('🔗 Database not connected, attempting to connect...');
+    const connected = await ensureDatabaseConnection();
+    if (!connected) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database connection failed. Please try again.',
+        timestamp: new Date().toISOString()
+      });
     }
   }
-}));
+  next();
+};
+
+// Security middleware
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false, // Allow embedding for PDF viewer
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'self'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'self'"],
+        frameAncestors: ["'self'", "http://localhost:3001", "http://localhost:3000"]
+      }
+    }
+  })
+);
 
 // CORS configuration
-app.use(cors({
-  origin: CORS_ORIGIN.split(','),
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+const allowedOrigins = CORS_ORIGIN === '*' ? [] : CORS_ORIGIN.split(',').map(origin => origin.trim());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (CORS_ORIGIN === '*') {
+        // Allow all origins (testing only)
+        callback(null, true);
+      } else if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true); // Allow listed origins
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  })
+);
 
-// Request logging
-app.use(morgan('combined'));
+// Request logging (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('combined'));
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(cookieParser());
 
-// Health check endpoint
+// Health check endpoints
 app.get('/', (_req, res) => {
   res.json({
     success: true,
@@ -63,8 +111,11 @@ app.get('/', (_req, res) => {
   });
 });
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
+  if (!database.isConnectedToDatabase()) {
+    await ensureDatabaseConnection();
+  }
+
   res.json({
     success: true,
     status: 'healthy',
@@ -78,10 +129,11 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// API routes
-app.use('/api/upload', uploadRoutes);
-app.use('/api/extract', extractRoutes);
-app.use('/api/invoices', invoicesRoutes);
+// API routes (with database middleware)
+app.use('/api/auth', databaseMiddleware, authRoutes);
+app.use('/api/upload', databaseMiddleware, uploadRoutes);
+app.use('/api/extract', databaseMiddleware, extractRoutes);
+app.use('/api/invoices', databaseMiddleware, invoicesRoutes);
 
 // 404 handler for unmatched routes
 app.use(notFoundHandler);
@@ -89,43 +141,30 @@ app.use(notFoundHandler);
 // Global error handler
 app.use(errorHandler);
 
-// Graceful shutdown function
-const gracefulShutdown = async (): Promise<void> => {
-  console.log('🔄 Shutting down gracefully...');
-  
-  try {
-    await database.disconnect();
-    console.log('✅ Database disconnected');
-  } catch (error) {
-    console.error('❌ Error during database disconnect:', error);
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const startServer = async (): Promise<void> => {
+    try {
+      await database.connect();
+
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`🔗 CORS enabled for: ${CORS_ORIGIN}`);
+      });
+    } catch (error) {
+      console.error('❌ Failed to start server:', error);
+      process.exit(1);
+    }
+  };
+
+  if (require.main === module) {
+    startServer();
   }
-  
-  process.exit(0);
-};
+}
 
-// Handle shutdown signals
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+// Export for serverless deployment (Vercel)
+export default serverless(app);
 
-// Start server
-const startServer = async (): Promise<void> => {
-  try {
-    // Connect to database
-    await database.connect();
-    
-    // Start HTTP server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔗 CORS enabled for: ${CORS_ORIGIN}`);
-      console.log(`📄 API Documentation available at: http://localhost:${PORT}/api`);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
-};
-
-// Start the server
-startServer();
-
+// Export app for testing or local dev
+export { app };

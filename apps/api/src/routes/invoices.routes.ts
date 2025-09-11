@@ -2,6 +2,7 @@ import express from 'express';
 import Invoice from '../models/Invoice';
 import { IApiResponse, IInvoice, ISearchQuery } from '../types/invoice.types';
 import { validate, createInvoiceSchema, updateInvoiceSchema, searchQuerySchema } from '../utils/validation';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth.middleware';
 
 const router = express.Router();
 
@@ -10,8 +11,9 @@ const router = express.Router();
  * Get all invoices with optional search and pagination
  */
 router.get('/', 
+  authenticate,
   validate(searchQuerySchema, 'query'),
-  async (req: express.Request, res: express.Response): Promise<void> => {
+  async (req: AuthenticatedRequest, res: express.Response): Promise<void> => {
     try {
       const { q, page, limit, sortBy, sortOrder }: ISearchQuery = req.query;
       
@@ -71,7 +73,7 @@ router.get('/',
  * GET /invoices/:id
  * Get a specific invoice by ID
  */
-router.get('/:id', async (req: express.Request, res: express.Response): Promise<void> => {
+router.get('/:id', authenticate, async (req: AuthenticatedRequest, res: express.Response): Promise<void> => {
   try {
     const { id } = req.params;
 
@@ -116,8 +118,9 @@ router.get('/:id', async (req: express.Request, res: express.Response): Promise<
  * Create a new invoice
  */
 router.post('/',
+  authenticate,
   validate(createInvoiceSchema),
-  async (req: express.Request, res: express.Response): Promise<void> => {
+  async (req: AuthenticatedRequest, res: express.Response): Promise<void> => {
     try {
       const invoiceData = req.body;
       
@@ -169,8 +172,9 @@ router.post('/',
  * Update an existing invoice
  */
 router.put('/:id',
+  authenticate,
   validate(updateInvoiceSchema),
-  async (req: express.Request, res: express.Response): Promise<void> => {
+  async (req: AuthenticatedRequest, res: express.Response): Promise<void> => {
     try {
       const { id } = req.params;
       const updateData = req.body;
@@ -236,7 +240,7 @@ router.put('/:id',
  * DELETE /invoices/:id
  * Delete an invoice
  */
-router.delete('/:id', async (req: express.Request, res: express.Response): Promise<void> => {
+router.delete('/:id', authenticate, async (req: AuthenticatedRequest, res: express.Response): Promise<void> => {
   try {
     const { id } = req.params;
 

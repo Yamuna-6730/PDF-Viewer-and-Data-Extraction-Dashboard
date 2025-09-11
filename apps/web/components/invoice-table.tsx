@@ -108,12 +108,10 @@ export default function InvoiceTable({ invoices, onInvoiceDeleted }: InvoiceTabl
                     <Button
                       variant="outline"
                       size="sm"
-                      asChild
+                      onClick={() => onInvoiceView?.(invoice._id!)}
                     >
-                      <Link href={`/viewer/${invoice._id}`}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Link>
+                      <Eye className="h-4 w-4 mr-1" />
+                      View
                     </Button>
                     <Button
                       variant="outline"

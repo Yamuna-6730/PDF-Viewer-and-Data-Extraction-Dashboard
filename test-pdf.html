@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Test</title>
+</head>
+<body>
+    <h1>PDF Viewing Test</h1>
+    
+    <h2>Method 1: Object Tag</h2>
+    <object data="http://localhost:4000/api/upload/test-file-id/view" type="application/pdf" width="100%" height="400px">
+        <p>PDF cannot be displayed. <a href="http://localhost:4000/api/upload/test-file-id/view">Download the PDF</a></p>
+    </object>
+    
+    <h2>Method 2: Iframe</h2>
+    <iframe src="http://localhost:4000/api/upload/test-file-id/view" width="100%" height="400px">
+        <p>PDF cannot be displayed in iframe</p>
+    </iframe>
+    
+    <h2>Method 3: Direct Link</h2>
+    <a href="http://localhost:4000/api/upload/test-file-id/view" target="_blank">Open PDF in new tab</a>
+</body>
+</html>

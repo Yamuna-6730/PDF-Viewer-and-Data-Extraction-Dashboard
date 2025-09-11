@@ -14,8 +14,21 @@ class Database {
   }
 
   public async connect(): Promise<void> {
-    if (this.isConnected) {
+    // Check if mongoose is already connected
+    if (mongoose.connection.readyState === 1) {
+      this.isConnected = true;
       console.log('Database already connected');
+      return;
+    }
+
+    // Check if mongoose is connecting
+    if (mongoose.connection.readyState === 2) {
+      console.log('Database is connecting, waiting...');
+      await new Promise((resolve) => {
+        mongoose.connection.on('connected', resolve);
+        mongoose.connection.on('error', resolve);
+      });
+      this.isConnected = this.isConnectedToDatabase();
       return;
     }
 
@@ -26,40 +39,48 @@ class Database {
         throw new Error('MONGODB_URI environment variable is not defined');
       }
 
+      console.log('🔗 Connecting to MongoDB...');
+
+      // Serverless-optimized connection options
       await mongoose.connect(mongoUri, {
-        serverSelectionTimeoutMS: 5000,
+        // Connection timeout settings
+        serverSelectionTimeoutMS: 10000, // Increased for serverless
+        connectTimeoutMS: 10000,
         socketTimeoutMS: 45000,
-        maxPoolSize: 10,
-        minPoolSize: 5,
+        
+        // Pool settings for serverless
+        maxPoolSize: process.env.NODE_ENV === 'production' ? 5 : 10,
+        minPoolSize: 0, // Allow connections to be closed when not needed
         maxIdleTimeMS: 30000,
+        
+        // Reliability settings
         retryWrites: true,
-        w: 'majority'
+        w: 'majority',
+        
+        // Buffer settings for serverless
+        bufferCommands: false,
       });
 
       this.isConnected = true;
       console.log('✅ MongoDB connected successfully');
 
-      // Handle connection events
-      mongoose.connection.on('error', (err) => {
-        console.error('❌ MongoDB connection error:', err);
-        this.isConnected = false;
-      });
+      // Handle connection events (only register once)
+      if (!mongoose.connection.listenerCount('error')) {
+        mongoose.connection.on('error', (err) => {
+          console.error('❌ MongoDB connection error:', err);
+          this.isConnected = false;
+        });
 
-      mongoose.connection.on('disconnected', () => {
-        console.log('📤 MongoDB disconnected');
-        this.isConnected = false;
-      });
+        mongoose.connection.on('disconnected', () => {
+          console.log('📤 MongoDB disconnected');
+          this.isConnected = false;
+        });
 
-      mongoose.connection.on('reconnected', () => {
-        console.log('🔄 MongoDB reconnected');
-        this.isConnected = true;
-      });
-
-      // Graceful shutdown
-      process.on('SIGINT', async () => {
-        await this.disconnect();
-        process.exit(0);
-      });
+        mongoose.connection.on('reconnected', () => {
+          console.log('🔄 MongoDB reconnected');
+          this.isConnected = true;
+        });
+      }
 
     } catch (error) {
       console.error('❌ MongoDB connection failed:', error);

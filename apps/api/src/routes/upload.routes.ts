@@ -97,6 +97,83 @@ router.get('/:fileId', async (req: express.Request, res: express.Response): Prom
 });
 
 /**
+ * OPTIONS /upload/:fileId/view
+ * Handle CORS preflight for view endpoint
+ */
+router.options('/:fileId/view', (req: express.Request, res: express.Response): void => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  res.status(200).end();
+});
+
+/**
+ * GET /upload/:fileId/view
+ * View a file inline (for embedding in iframe)
+ */
+router.get('/:fileId/view', async (req: express.Request, res: express.Response): Promise<void> => {
+  try {
+    const { fileId } = req.params;
+    console.log('View endpoint called with fileId:', fileId);
+    
+    if (!fileId) {
+      res.status(400).json({
+        success: false,
+        error: 'File ID is required'
+      });
+      return;
+    }
+
+    const storageService = getStorageService();
+    console.log('Storage service obtained:', storageService.constructor.name);
+    
+    // Get file info first
+    console.log('Getting file info for:', fileId);
+    const fileInfo = await storageService.getFileInfo(fileId);
+    console.log('File info retrieved:', fileInfo);
+    
+    // Get file content
+    console.log('Downloading file content...');
+    const fileBuffer = await storageService.download(fileId);
+    console.log('File downloaded, size:', fileBuffer.length, 'bytes');
+
+    // Set appropriate headers for inline display
+    res.setHeader('Content-Type', fileInfo.mimeType);
+    res.setHeader('Content-Length', fileBuffer.length.toString());
+    res.setHeader('Content-Disposition', `inline; filename="${fileInfo.fileName}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Allow CORS
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Remove CSP header to allow iframe embedding
+    res.removeHeader('Content-Security-Policy');
+    
+    console.log('Sending file buffer to client');
+    res.send(fileBuffer);
+  } catch (error) {
+    console.error('View error:', error);
+    console.error('Error details:', error instanceof Error ? error.stack : error);
+    
+    let statusCode = 500;
+    let message = 'Failed to view file';
+
+    if (error instanceof Error && error.message.includes('not found')) {
+      statusCode = 404;
+      message = 'File not found';
+    }
+
+    const response: IApiResponse = {
+      success: false,
+      error: message,
+      details: error instanceof Error ? error.message : String(error)
+    };
+
+    res.status(statusCode).json(response);
+  }
+});
+
+/**
  * GET /upload/:fileId/download
  * Download a file
  */
@@ -120,7 +197,7 @@ router.get('/:fileId/download', async (req: express.Request, res: express.Respon
     // Download file content
     const fileBuffer = await storageService.download(fileId);
 
-    // Set appropriate headers
+    // Set appropriate headers for download
     res.setHeader('Content-Type', fileInfo.mimeType);
     res.setHeader('Content-Length', fileBuffer.length.toString());
     res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.fileName}"`);
